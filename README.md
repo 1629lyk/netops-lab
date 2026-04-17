@@ -242,7 +242,7 @@ docker build -t gns3/ubuntu:noble .
 | 7 | SW1-L2 | Ethernet0/1 | PC1 | eth0 |
 | 8 | SW1-L2 | Ethernet0/2 | PC2 | eth0 |
 
-> **Interface naming:** FRR nodes use Linux-style (`eth0`, `eth1`). ASA uses Cisco-style (`GigabitEthernet0/x`). i86bi switches use IOU-style (`Ethernet0/x`). Never assume — always confirm in GNS3 when adding links.
+> **Interface naming:** FRR nodes use Linux-style (`eth0`, `eth1`). ASA uses Cisco-style (`GigabitEthernet0/x`). i86bi switches use IOU-style (`Ethernet0/x`).
 
 ---
 
