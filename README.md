@@ -1,6 +1,5 @@
-# NetOps Automation Hub — Lab Reference Guide
+# NetOps Automation Hub
 
-> **Purpose:** Complete rebuild reference for the GNS3 lab environment. If starting from scratch, follow this document top to bottom without skipping steps.
 
 ---
 
