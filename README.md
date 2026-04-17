@@ -37,19 +37,6 @@
 - Lab: GNS3 (Ubuntu-based VM on VMware Workstation)
 - Automation Server: Ubuntu Server 22.04 LTS (VMware)
 
-**Portfolio Capability Mapping:**
-
-| Capability | Role Targeted | Device |
-|---|---|---|
-| BGP neighbor monitoring | Automation engineer | FRR-R1 ↔ FRR-R2 |
-| OSPF topology collection | All three | FRR-R1, SW2-L3 |
-| VLAN provisioning automation | NOC + automation | SW1-L2, SW2-L3 |
-| Firewall ACL auditing | Security engineer | ASA-FW |
-| Config backup + drift detection | All three | All devices |
-| Compliance policy engine | Security + automation | All devices |
-| FastAPI task orchestration | Automation engineer | Ubuntu Server |
-| Streamlit NOC dashboard | NOC | Ubuntu Server |
-
 ---
 
 ## Infrastructure Summary
