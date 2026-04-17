@@ -1,8 +1,5 @@
 # NetOps Automation Hub
 
-
----
-
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
