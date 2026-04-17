@@ -1,0 +1,46 @@
+---
+frr-r1:
+  hostname: 192.168.66.101
+  groups:
+    - frr
+  data:
+    role: router
+    vendor: frrouting
+    site: core
+
+frr-r2:
+  hostname: 10.0.99.2
+  groups:
+    - frr
+  data:
+    role: router
+    vendor: frrouting
+    site: isp
+
+asa-fw:
+  hostname: 10.0.13.2
+  groups:
+    - cisco_asa
+  data:
+    role: firewall
+    vendor: cisco
+    site: edge
+    exclude_from_automation: true
+
+sw2-l3:
+  hostname: 10.0.14.2
+  groups:
+    - cisco_ios
+  data:
+    role: l3switch
+    vendor: cisco
+    site: distribution
+
+sw1-l2:
+  hostname: 10.10.0.254
+  groups:
+    - cisco_ios
+  data:
+    role: l2switch
+    vendor: cisco
+    site: access

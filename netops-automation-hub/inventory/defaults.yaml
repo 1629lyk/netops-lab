@@ -1,0 +1,4 @@
+---
+data:
+  ssh_timeout: 30
+  conn_timeout: 10

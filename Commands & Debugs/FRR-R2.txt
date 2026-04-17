@@ -1,0 +1,192 @@
+just the udhcpc part of FRR-R2
+
+udhcpc: broadcasting discover
+udhcpc failed to get a DHCP lease
+udhcpc: broadcasting discover
+
+8:38 PM
+This means Cloud-NAT isn't passing DHCP to FRR-R2. Work through these checks in order.
+
+Check 1 — Verify Cloud-NAT is bound to the right interface.
+
+In GNS3 on Windows, right-click Cloud-NAT → Configure. Look at which interface is selected. It must show VMware Network Adapter VMnet8 — not VMnet1, not a physical adapter, not "any". If it's wrong, fix it here first.
+
+Check 2 — Verify the link between Cloud-NAT and FRR-R2.
+
+In GNS3, look at the cable between Cloud-NAT and FRR-R2. Hover over it — GNS3 shows the interface names on both ends. Confirm it says eth0 on the FRR-R2 side. If it says eth1 or anything else, that's your problem — udhcpc is running on the wrong interface.
+
+If the link is on the wrong interface, run:
+
+bash
+udhcpc -i eth1
+and see if that gets a lease instead.
+
+Check 3 — Confirm eth0 is actually up and linked.
+
+bash
+ip link show eth0
+You want to see UP and LOWER_UP in the flags. If you see NO-CARRIER, the GNS3 link isn't established — the cable between Cloud-NAT and FRR-R2 may not be connected properly. Try stopping and starting FRR-R2 in GNS3 (right-click → Stop, then Start).
+
+Check 4 — Confirm Cloud-NAT node itself is started.
+
+In GNS3, Cloud nodes sometimes need to be explicitly started. Right-click Cloud-NAT → Start. Even though Cloud nodes don't "boot", GNS3 still needs them in a started state to pass traffic.
+
+
+Show less
+8:42 PM
+The image and the ip link output tell me exactly what's happening.
+
+The problem: Cloud-NAT is binding to eth1 on the GNS3 VM host (192.168.254.133 — that's the GNS3 VM's own VMnet8 interface), not passing through to FRR-R2 as a bridged connection. GNS3 is essentially trying to share its own VMnet8 NIC with FRR-R2, but DHCP from VMware's NAT isn't reaching FRR-R2 because the Cloud node is acting as a pass-through to a NIC that already has an IP — VMware's DHCP won't issue a second lease on the same MAC segment to a different device this way.
+
+The fix: FRR-R2 cannot get DHCP here. Assign a static IP on FRR-R2's eth0 in the same 192.168.254.0/24 subnet, and use 192.168.254.2 as the gateway (VMware's VMnet8 NAT gateway, always .2).
+
+Pick an IP that won't conflict with your existing VMs (.133 is GNS3 VM, .134 is Ubuntu Server):
+
+bash
+ip addr add 192.168.254.135/24 dev eth0
+ip link set eth0 up
+ip route add default via 192.168.254.2
+Test internet immediately:
+
+bash
+ping -c3 8.8.8.8
+If that works, make it persistent:
+
+bash
+cat > /etc/network/interfaces << 'EOF'
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet static
+    address 192.168.254.135
+    netmask 255.255.255.0
+    gateway 192.168.254.2
+
+auto eth1
+iface eth1 inet static
+    address 10.0.12.2
+    netmask 255.255.255.252
+EOF
+Also update the FRR config — the static default route needs to point to 192.168.254.2 instead of relying on DHCP:
+
+bash
+cat > /etc/frr/frr.conf << 'EOF'
+frr version 8.2.2
+frr defaults traditional
+hostname FRR-R2
+log syslog informational
+no ipv6 forwarding
+!
+interface eth0
+ description CLOUD-NAT-INTERNET
+!
+interface eth1
+ description LINK-TO-FRR-R1
+ ip address 10.0.12.2/30
+!
+router bgp 65002
+ bgp router-id 10.0.12.2
+ neighbor 10.0.12.1 remote-as 65001
+ neighbor 10.0.12.1 description FRR-R1
+ !
+ address-family ipv4 unicast
+  network 0.0.0.0/0
+  neighbor 10.0.12.1 activate
+  neighbor 10.0.12.1 default-originate
+ exit-address-family
+!
+ip route 0.0.0.0/0 192.168.254.2
+!
+line vty
+!
+EOF
+Then restart FRR:
+
+bash
+rc-service frr restart
+Run checkpoint 1:
+
+bash
+ping -c3 8.8.8.8
+ping -c3 10.0.12.1
+vtysh -c "show interface brief"
+vtysh -c "show ip route"
+vtysh -c "show bgp summary"
+
+Checkpoint 1 is green. Here's what the output confirms:
+
+ping 8.8.8.8 — internet working (33% loss on first ping is normal, that's just ARP resolution on the first packet)
+S 0.0.0.0/0 via 192.168.254.2 — static default route installed
+C>* 10.0.12.0/30 — eBGP link interface up and connected
+BGP neighbor 10.0.12.1 in Active state — correct, R1 isn't configured yet so R2 is actively trying to connect but no peer responds yet
+
+One thing to note before you move to Stage 2 (FRR-R1): The K>* 0.0.0.0/0 kernel route is taking precedence over your static S route. That's fine — the kernel route was installed by the earlier ip route add default via 192.168.254.2 command you ran manually. Both point to the same next-hop so there's no conflict. Once you reboot, only the FRR static route will survive (from frr.conf), which is correct behavior.
+Go ahead and run Stages 2 through 5 using the configs generated previously. Come back and paste the checkpoint output after each stage — specifically:
+
+After Stage 2: vtysh -c "show bgp summary" from R1 showing Established
+After Stage 3: ping 8.8.8.8 from ASA console
+After Stage 4: show ip route from SW2-L3
+After Stage 5: full checkpoint 5 block from Ubuntu Server
+
+Don't skip checkpoints — if BGP doesn't show Established after Stage 2, stop there and paste the output before touching ASA.
+
+BGP is perfect. B>* 0.0.0.0/0 via 10.0.12.2 is installed and active. The routing table is correct. The ping failure is not a routing problem — it's a forwarding/NAT problem on FRR-R2.
+
+What's happening:
+Packets from R1 reach R2 via the eBGP link (10.0.12.1 → 10.0.12.2), R2 forwards them out eth0 toward 8.8.8.8, but the reply comes back to R2 and R2 doesn't know to forward it back to R1. The return packet goes to VMware's NAT gateway (192.168.254.2) which has no route to 10.0.12.1. You need NAT masquerade on FRR-R2 so traffic from R1 appears to originate from R2's eth0 IP (192.168.254.135).
+
+Fix — on FRR-R2 shell:
+First install iptables:
+bashapk add iptables
+Then add NAT masquerade on the internet-facing interface:
+bashiptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+Enable forwarding if not already active:
+bashsysctl -w net.ipv4.ip_forward=1
+Make iptables rules persistent on Alpine:
+bashapk add iptables-legacy
+rc-update add iptables
+/etc/init.d/iptables save
+Make forwarding persistent:
+bashecho 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+Now test from FRR-R1:
+bashping -c3 8.8.8.8
+
+
+
+
+
+
+### ASA
+
+Problem 1 — ASA can't ping 8.8.8.8
+ASA reaches R1 (10.0.13.1 works) but internet fails. The ASA is sending packets out the outside interface toward R1, R1 forwards them to R2, R2 NATs them out — but the reply comes back to R2, gets forwarded to R1, R1 sends it back to ASA's outside IP (10.0.13.2).
+The issue is R1 has no NAT for traffic originating from 10.0.13.0/24. Only traffic from R1 itself gets masqueraded by R2. Traffic from ASA (10.0.13.2) arrives at R2 still with source IP 10.0.13.2 — R2 NATs it, reply comes back to R2, but R2 doesn't know how to return it to 10.0.13.2 because that's on R1's eth2 which isn't in R2's routing table.
+Fix — add the inside networks to R2's routing table so return traffic knows the path back:
+On FRR-R2 console:
+bashvtysh
+configure terminal
+ip route 10.0.13.0/30 10.0.12.1
+ip route 10.0.14.0/24 10.0.12.1
+ip route 10.10.0.0/24 10.0.12.1
+ip route 10.20.0.0/24 10.0.12.1
+end
+write memory
+This tells R2: for any return traffic destined to lab subnets, send it back via R1 (10.0.12.1). The iptables MASQUERADE on R2 then handles the NAT translation correctly for all these subnets.
+Verify on ASA after adding routes:
+ping 8.8.8.8
+
+
+### Loopback address gone		
+
+The loopback 10.0.99.2 is gone — bootstrap can't SSH to FRR-R2 because that IP doesn't exist anymore after restart.
+You need to restore FRR-R2's eth0 IP first from the GNS3 console directly:
+From FRR-R2 console in GNS3:
+bash
+
+ip addr add 192.168.254.135/24 dev eth0
+ip route add default via 192.168.254.2 dev eth0
+ip addr add 10.0.99.2/32 dev lo
+ip route add 192.168.66.0/24 via 10.0.12.1

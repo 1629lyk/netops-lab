@@ -1,0 +1,5 @@
+netops-automation-hub (1).mp4
+netops-automation-hub.mp4
+netops-automation-hub/scripts/__py*
+netops-automation-hub/scripts/bootstrap/__py*
+netops-automation-hub/src/__py*

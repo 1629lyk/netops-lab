@@ -1,0 +1,25 @@
+### ASA
+
+You need a route like 10.0.13.0/24 via 192.168.66.101. If it's missing add it:
+bashsudo ip route add 10.0.13.0/30 via 192.168.66.101
+Make it persistent in Netplan:
+bashsudo nano /etc/netplan/00-installer-config.yaml
+Add under ens33:
+yamlnetwork:
+  version: 2
+  ethernets:
+    ens33:
+      dhcp4: true
+      routes:
+        - to: 10.0.0.0/8
+          via: 192.168.66.101
+    ens34:
+      dhcp4: true
+Apply:
+bashsudo netplan apply
+This single route 10.0.0.0/8 via 192.168.66.101 covers all lab subnets — ASA outside (10.0.13.x), inside (10.0.14.x), VLANs (10.10.x, 10.20.x) — all routed through FRR-R1.
+
+
+# From Ubuntu
+ping -c3 10.0.13.2          # ASA outside interface
+ssh netops@10.0.13.2        # ASA SSH via outside

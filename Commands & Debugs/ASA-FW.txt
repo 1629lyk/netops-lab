@@ -1,0 +1,104 @@
+Stage 3 — ASA-FW
+ASA console. Wait for ciscoasa> prompt.
+enable
+configure terminal
+
+hostname ASA-FW
+
+! Outside interface — to FRR-R1
+interface GigabitEthernet0/0
+ nameif outside
+ security-level 0
+ ip address 10.0.13.2 255.255.255.252
+ no shutdown
+
+! Inside interface — to SW2-L3
+interface GigabitEthernet0/1
+ nameif inside
+ security-level 100
+ ip address 10.0.14.1 255.255.255.0
+ no shutdown
+
+! Default route out via FRR-R1
+route outside 0.0.0.0 0.0.0.0 10.0.13.1 1
+
+! Allow higher-to-lower security traffic for now (Phase 3 will tighten this)
+same-security-traffic permit inter-interface
+same-security-traffic permit intra-interface
+
+! Allow inside and mgmt to reach outside (needed before inspection policy)
+access-list INSIDE_OUT extended permit ip any any
+access-group INSIDE_OUT in interface inside
+
+! Allow SSH on the outside interface explicitly
+ssh 192.168.66.0 255.255.255.0 outside
+ssh 10.0.0.0 255.0.0.0 outside
+ssh version 2
+ssh timeout 60
+
+username netops password NetOps2024! privilege 15
+aaa authentication ssh console LOCAL
+enable password NetOps2024!
+
+! Critical — prevents Netmiko from hanging on paged output
+terminal pager 0
+
+write memory
+
+
+ping 192.168.66.131         # Ubuntu Server
+ping 8.8.8.8               # internet — after fixing R2 routes from earlier
+
+
+
+
+
+
+# SW2-L3 ping 8.8.8.8
+
+Requests and replies are both passing through R1 perfectly. R1 is forwarding correctly in both directions. The problem is the ASA is dropping the return traffic before it reaches SW2-L3.
+The replies arrive at R1 eth2, R1 forwards them to ASA outside (10.0.13.2), but ASA's stateful inspection is dropping them because ASA didn't see the original outbound session initiated from inside — or the return traffic is hitting the outside interface and ASA's security model blocks outside-initiated traffic by default.
+Fix on ASA — enable stateful inspection to allow return traffic:
+configure terminal
+
+! Allow established/related return traffic on outside interface
+access-list OUTSIDE_IN extended permit icmp any any
+access-group OUTSIDE_IN in interface outside
+
+! Also ensure inspection policy is active
+policy-map global_policy
+ class inspection_default
+  inspect icmp
+service-policy global_policy global
+
+write memory
+
+
+
+
+Add static routes on ASA for the VLAN subnets:
+configure terminal
+route inside 10.10.0.0 255.255.255.0 10.0.14.2
+route inside 10.20.0.0 255.255.255.0 10.0.14.2
+write memory
+
+
+
+
+
+
+
+ASA console — reapply access rules:
+configure terminal
+access-list OUTSIDE_IN extended permit ip any any
+access-list INSIDE_OUT extended permit ip any any
+access-group OUTSIDE_IN in interface outside
+access-group INSIDE_OUT in interface inside
+policy-map global_policy
+ class inspection_default
+  inspect icmp
+service-policy global_policy global
+route inside 10.10.0.0 255.255.255.0 10.0.14.2
+route inside 10.20.0.0 255.255.255.0 10.0.14.2
+write memory
+

@@ -1,0 +1,28 @@
+---
+frr:
+  platform: linux
+  connection_options:
+    netmiko:
+      extras:
+        timeout: 30
+        conn_timeout: 10
+
+cisco_ios:
+  platform: cisco_ios
+  connection_options:
+    netmiko:
+      extras:
+        timeout: 30
+        conn_timeout: 10
+        global_delay_factor: 2
+
+
+cisco_asa:
+  platform: cisco_asa
+  connection_options:
+    netmiko:
+      extras:
+        timeout: 60
+        conn_timeout: 20
+        global_delay_factor: 4
+        ssh_config_file: ~/.ssh/config
