@@ -79,6 +79,9 @@ Cloud-MGMT (VMnet1)          Cloud-NAT (VMnet8)
     VLAN10       VLAN20
 ```
 
+![Topology](./gns3-topology.png)
+
+
 **Data path (internet):**
 `PC1/PC2 → SW1 → SW2 → ASA → FRR-R1 → eBGP → FRR-R2 → Cloud-NAT → VMnet8`
 
